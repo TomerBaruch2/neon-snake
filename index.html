@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neon Snake</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game">
+    <h1>NEON SNAKE</h1>
+    <div class="stats">
+      <div>SCORE <span id="score">0</span></div>
+    </div>
+    <div class="board-wrap">
+      <canvas id="board" width="480" height="480"></canvas>
+      <div id="overlay" class="overlay">
+        <h2 id="overlay-title">NEON SNAKE</h2>
+        <p id="overlay-text">Eat. Grow. Survive.</p>
+        <button id="start-btn">START GAME</button>
+      </div>
+    </div>
+    <p class="help">Move: ↑ ↓ ← → / WASD | Restart: R</p>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Neon Snake Tests</title></head>
+<body>
+<pre id="out"></pre>
+<iframe id="game" style="width:1366px;height:768px"></iframe>
+<script src="../script.js"></script>
+<script>
+const out = document.getElementById('out');
+let pass = 0, fail = 0;
+function check(name, cond) {
+  if (cond) pass++; else fail++;
+  out.textContent += (cond ? 'PASS ' : 'FAIL ') + name + '\n';
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const seeded = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(42);
+const at = (c, x, y) => c.x === x && c.y === y;
+
+function unitTests() {
+  let s = Logic.createState(seeded);
+  check('initial snake has 3 segments', s.snake.length === 3);
+  check('initial direction is right', s.dir === 'right');
+  check('initial food not on snake', !s.snake.some(c => at(c, s.food.x, s.food.y)));
+
+  s = Logic.createState(seeded); s.food = { x: 0, y: 0 };
+  Logic.step(s);
+  check('snake moves right one cell', at(s.snake[0], 11, 10) && s.snake.length === 3);
+
+  s = Logic.createState(seeded);
+  check('direct reverse is rejected', Logic.queueDirection(s, 'left') === false);
+
+  s = Logic.createState(seeded); s.food = { x: 0, y: 0 };
+  Logic.queueDirection(s, 'up'); Logic.queueDirection(s, 'left');
+  Logic.step(s); Logic.step(s);
+  check('rapid up+left turns apply in order without dying', s.status === 'running' && at(s.snake[0], 9, 9));
+
+  s = Logic.createState(seeded);
+  Logic.queueDirection(s, 'up');
+  check('up then down (reverse of queued) rejected', Logic.queueDirection(s, 'down') === false);
+
+  s = Logic.createState(seeded); s.food = { x: 11, y: 10 };
+  Logic.step(s); Logic.step(s);
+  check('eating gives +10 and grows by 1', s.score === 10 && s.snake.length === 4 && s.foodsEaten === 1);
+  check('new food spawned off-snake', s.food && !s.snake.some(c => at(c, s.food.x, s.food.y)));
+
+  s = Logic.createState(seeded); s.snake = [{ x: 19, y: 5 }, { x: 18, y: 5 }, { x: 17, y: 5 }]; s.food = { x: 0, y: 0 };
+  check('wall collision ends game', Logic.step(s)[0] === 'wall' && s.status === 'over');
+
+  s = Logic.createState(seeded); s.food = { x: 0, y: 0 };
+  s.snake = [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }, { x: 4, y: 6 }];
+  s.dir = 'left'; Logic.queueDirection(s, 'down');
+  check('self collision ends game', Logic.step(s)[0] === 'self');
+
+  s = Logic.createState(seeded); s.food = { x: 0, y: 0 };
+  s.snake = [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }];
+  s.dir = 'left'; Logic.queueDirection(s, 'down');
+  Logic.step(s);
+  check('moving into vacating tail cell is allowed', s.status === 'running');
+
+  s = Logic.createState(seeded); s.food = { x: 0, y: 0 }; s.pendingGrowth = 1;
+  s.snake = [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }];
+  s.dir = 'left'; Logic.queueDirection(s, 'down');
+  Logic.step(s);
+  check('moving into tail while growing is a collision', s.status === 'over');
+
+  s = Logic.createState(seeded); s.food = null;
+  s.snake = [];
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if (!(x < 3 && y < 3)) s.snake.push({ x, y });
+  let ok = true;
+  for (let i = 0; i < 500; i++) { const c = Logic.freeCells(s); const f = c[Math.floor(Math.random() * c.length)]; if (!(f.x < 3 && f.y < 3)) ok = false; }
+  check('free cells never include snake cells', ok && Logic.freeCells(s).length === 9);
+
+  const path = [];
+  for (let y = 0; y < 20; y++) for (let i = 0; i < 20; i++) path.push({ x: y % 2 ? 19 - i : i, y });
+  s = Logic.createState(seeded);
+  s.snake = path.slice(0, 399).reverse(); s.dir = 'left'; s.queue = []; s.food = { ...path[399] };
+  let threw = false;
+  try { Logic.step(s); } catch (e) { threw = true; }
+  check('filling the board wins without error', !threw && s.status === 'won' && s.food === null);
+}
+
+async function e2e() {
+  const frame = document.getElementById('game');
+  frame.src = '../index.html';
+  await new Promise(r => frame.onload = r);
+  const w = frame.contentWindow, d = frame.contentDocument;
+  const key = code => { const e = new w.KeyboardEvent('keydown', { code, bubbles: true, cancelable: true }); w.dispatchEvent(e); return e; };
+
+  d.getElementById('start-btn').click();
+  await wait(700);
+  const st = w.__neon.state;
+  check('e2e: start button starts game', st && st.status === 'running' && !d.getElementById('overlay').offsetParent);
+  check('e2e: snake moved right', st.snake[0].x > 10);
+  const ev = key('ArrowUp');
+  check('e2e: arrow key default prevented (no page scroll)', ev.defaultPrevented);
+  await wait(400);
+  check('e2e: ArrowUp turns snake up', w.__neon.state.snake[0].y < 10);
+  await wait(2000);
+  check('e2e: hitting top wall shows GAME OVER', w.__neon.state.status === 'over' && d.getElementById('overlay-title').textContent === 'GAME OVER');
+  key('KeyR');
+  await wait(50);
+  const r = w.__neon.state;
+  check('e2e: R restarts with fresh state', r.status === 'running' && r.score === 0 && r.snake.length === 3);
+}
+
+(async () => {
+  try { unitTests(); await e2e(); } catch (e) { fail++; out.textContent += 'ERROR ' + e.stack + '\n'; }
+  out.textContent += `\nRESULT: ${pass} passed, ${fail} failed\n`;
+  document.title = 'DONE';
+  fetch('/report?' + encodeURIComponent(out.textContent)).catch(() => {});
+})();
+</script>
+</body>
+</html>
